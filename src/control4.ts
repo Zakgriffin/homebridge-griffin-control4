@@ -1,4 +1,4 @@
-import axios, { AxiosInstance } from "axios";
+import axios, { AxiosError, AxiosInstance } from "axios";
 import https from "https";
 
 const APPLICATION_KEY = "78f6791373d61bea49fdb9fb8897f1f3af193f11";
@@ -36,16 +36,19 @@ async function cloudGet(url: string, token: string): Promise<unknown> {
   return res.json();
 }
 
+function isAuthError(e: unknown): boolean {
+  return e instanceof AxiosError && (e.response?.status === 401 || e.response?.status === 403);
+}
+
 export class Control4 {
   private readonly localClient: AxiosInstance;
 
   private accountToken = "";
   private directorToken = "";
-  private directorTokenExpiry = 0;
   private controllerCommonName = "";
 
   constructor(
-    private readonly host: string,
+    host: string,
     private readonly username: string,
     private readonly password: string,
   ) {
@@ -56,6 +59,10 @@ export class Control4 {
   }
 
   async initialize(): Promise<void> {
+    await this.reAuthenticate();
+  }
+
+  private async reAuthenticate(): Promise<void> {
     const authRes = await cloudPost(CLOUD_AUTH, {
       clientInfo: {
         device: { deviceName: "homebridge", deviceUUID: "0000000000000000", make: "homebridge", model: "homebridge", os: "Android", osVersion: "10" },
@@ -75,15 +82,23 @@ export class Control4 {
       CLOUD_DIRECTOR_AUTH,
       { serviceInfo: { commonName: this.controllerCommonName, services: "director" } },
       this.accountToken,
-    ) as { authToken: { token: string; validSeconds: number } };
+    ) as { authToken: { token: string } };
     this.directorToken = res.authToken.token;
-    const validSeconds = res.authToken.validSeconds;
-    this.directorTokenExpiry = Date.now() + (validSeconds > 0 ? validSeconds - 300 : 86100) * 1000;
   }
 
-  private async ensureAuth(): Promise<void> {
-    if (Date.now() >= this.directorTokenExpiry) {
+  private async withAuth<T>(request: () => Promise<T>): Promise<T> {
+    try {
+      return await request();
+    } catch (e) {
+      if (!isAuthError(e)) throw e;
       await this.refreshDirectorToken();
+      try {
+        return await request();
+      } catch (e2) {
+        if (!isAuthError(e2)) throw e2;
+        await this.reAuthenticate();
+        return await request();
+      }
     }
   }
 
@@ -92,17 +107,19 @@ export class Control4 {
   }
 
   async getItems(): Promise<C4Item[]> {
-    await this.ensureAuth();
-    const res = await this.localClient.get<C4Item[]>("/api/v1/items", { headers: this.authHeader });
+    const res = await this.withAuth(() =>
+      this.localClient.get<C4Item[]>("/api/v1/items", { headers: this.authHeader }),
+    );
     return res.data;
   }
 
   async getVariable(itemId: number, varName: string): Promise<string> {
-    await this.ensureAuth();
-    const res = await this.localClient.get(`/api/v1/items/${itemId}/variables`, {
-      headers: this.authHeader,
-      params: { varnames: varName },
-    });
+    const res = await this.withAuth(() =>
+      this.localClient.get(`/api/v1/items/${itemId}/variables`, {
+        headers: this.authHeader,
+        params: { varnames: varName },
+      }),
+    );
     const data = res.data;
     const entry = Array.isArray(data)
       ? data.find((v: { varName: string }) => v.varName === varName)
@@ -112,18 +129,20 @@ export class Control4 {
   }
 
   async getVariables(itemId: number): Promise<Array<{ varName: string; value: unknown }>> {
-    await this.ensureAuth();
-    const res = await this.localClient.get(`/api/v1/items/${itemId}/variables`, { headers: this.authHeader });
+    const res = await this.withAuth(() =>
+      this.localClient.get(`/api/v1/items/${itemId}/variables`, { headers: this.authHeader }),
+    );
     const data = res.data;
     return Array.isArray(data) ? data : data ? [data] : [];
   }
 
   async sendCommand(itemId: number, command: string, params: Record<string, string | number> = {}): Promise<void> {
-    await this.ensureAuth();
-    await this.localClient.post(
-      `/api/v1/items/${itemId}/commands`,
-      { async: false, command, tParams: params },
-      { headers: this.authHeader },
+    await this.withAuth(() =>
+      this.localClient.post(
+        `/api/v1/items/${itemId}/commands`,
+        { async: false, command, tParams: params },
+        { headers: this.authHeader },
+      ),
     );
   }
 }
