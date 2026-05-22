@@ -83,14 +83,14 @@ export class Control4Platform implements DynamicPlatformPlugin {
         this.api.publishExternalAccessories(PLUGIN_NAME, [tvAcc]);
         this.log.info(`[${item.name}] Add in Home app → + → More options. Setup code is the same as the bridge — regroup digits as XXXX-XXXX (4+4)`);
         beginTvAccessory(tvAcc, item);
-      } else if (item.proxy === "roomdevice" && audioRoomNames.has(item.roomName) && !videoRoomNames.has(item.roomName)) {
-        this.log.info(`Found audio room: ${item.name} (ID ${item.id})`);
-        const audioAcc = new this.api.platformAccessory(item.name, this.api.hap.uuid.generate(item.name), Categories.SPEAKER);
-        this.api.publishExternalAccessories(PLUGIN_NAME, [audioAcc]);
-        this.log.info(`[${item.name}] Add in Home app → + → More options. Same setup code as the bridge — regroup digits as XXXX-XXXX (4+4)`);
-        beginAudioRoomAccessory(audioAcc, item);
       }
-      // else if (item.proxy === "contactsingle_doorbell_c4") {
+      // else if (item.proxy === "roomdevice" && audioRoomNames.has(item.roomName) && !videoRoomNames.has(item.roomName)) {
+      //   this.log.info(`Found audio room: ${item.name} (ID ${item.id})`);
+      //   const audioAcc = new this.api.platformAccessory(item.name, this.api.hap.uuid.generate(item.name), Categories.SPEAKER);
+      //   this.api.publishExternalAccessories(PLUGIN_NAME, [audioAcc]);
+      //   this.log.info(`[${item.name}] Add in Home app → + → More options. Same setup code as the bridge — regroup digits as XXXX-XXXX (4+4)`);
+      //   beginAudioRoomAccessory(audioAcc, item);
+      // } else if (item.proxy === "contactsingle_doorbell_c4") {
       //   this.log.info(`Found doorbell: ${item.name} (ID ${item.id})`);
       //   beginDoorbellAccessory(this.getAccessory(item.name), item);
       // } else if (item.proxy === "relaysingle_door_c4") {
